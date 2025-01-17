@@ -28,9 +28,6 @@ def get_background_and_text_colors(image):
 
     return background_color, text_color
 
-def RGB2HEX(color):
-    return "#{:02x}{:02x}{:02x}".format(int(color[0]), int(color[1]), int(color[2]))
-
 def get_colors(image, background_color, number_of_colors):
 
     modified_image = cv2.resize(np.array(image), (600, 400), interpolation = cv2.INTER_AREA)
@@ -118,23 +115,26 @@ async def detect_and_translate_text(image_path):
 
     for (bbox, text, prob) in results:
         if text.strip() and prob > threshold:
-
             print(f"Detected text: {text}, Confidence: {prob}")
 
             translated_text = await translator.translate(text, src=src_lang, dest=dst_lang)
             translated_text = translated_text.text
 
-            print(f"Translated text: {translated_text}")
+            x_min, y_min = map(int, bbox[0])  
+            x_max, y_max = map(int, bbox[2])  
 
-            box = bbox[0] + bbox[2]
-            box = [int(coord) for coord in box]
-
-            i_s = pil_image.crop(box)
+            if x_min > x_max:
+                x_min, x_max = x_max, x_min
+            if y_min > y_max:
+                y_min, y_max = y_max, y_min
+            
+            i_s = pil_image.crop((x_min, y_min, x_max, y_max))
 
             background_color, text_color = get_background_and_text_colors(i_s)
+
             o_f = create_text_image(i_s.size, background_color, text_color, translated_text)
 
-            processed_images.append((o_f, box))
+            processed_images.append((o_f, (x_min, y_min, x_max, y_max)))
 
     for processed_image, box in processed_images:
         pil_image.paste(processed_image, box)
