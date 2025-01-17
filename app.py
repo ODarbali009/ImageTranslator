@@ -120,7 +120,7 @@ async def detect_and_translate_text(image_path):
 
                 print(f"box: {bbox}")
                 
-                MIN_CROP_SIZE = 100
+                MIN_CROP_SIZE = 5
                 if x_max - x_min < MIN_CROP_SIZE or y_max - y_min < MIN_CROP_SIZE:
                     print(f"Skipping bounding box smaller than {MIN_CROP_SIZE}px.")
                     continue
