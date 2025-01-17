@@ -6,4 +6,5 @@ pillow
 scikit-image
 googletrans
 easyocr
+torch==2.1.2
 asyncio
