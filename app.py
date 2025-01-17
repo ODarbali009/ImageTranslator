@@ -118,7 +118,7 @@ async def detect_and_translate_text(image_path):
                 x_min, y_min = map(int, bbox[0])
                 x_max, y_max = map(int, bbox[2])
                 
-                if x_max - x_min <= 0 or y_max - y_min <= 0:
+                if x_max - x_min <= 1 or y_max - y_min <= 1:
                     print("Skipping invalid bounding box.")
                     continue
 
