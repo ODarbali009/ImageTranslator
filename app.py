@@ -118,8 +118,9 @@ async def detect_and_translate_text(image_path):
                 x_min, y_min = map(int, bbox[0])
                 x_max, y_max = map(int, bbox[2])
                 
-                x_min, x_max = sorted([x_min, x_max])
-                y_min, y_max = sorted([y_min, y_max])
+                if x_max - x_min <= 0 or y_max - y_min <= 0:
+                    print("Skipping invalid bounding box.")
+                    continue
 
                 i_s = pil_image.crop((x_min, y_min, x_max, y_max))
                 background_color, text_color = get_background_and_text_colors(i_s)
