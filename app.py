@@ -1,0 +1,187 @@
+import streamlit as st
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from collections import Counter
+from sklearn.cluster import KMeans
+import numpy as np
+import cv2
+import easyocr
+from googletrans import Translator
+import os
+import asyncio
+
+src_lang = 'ja'
+dst_lang = 'en'
+threshold = 0.001
+
+def get_background_and_text_colors(image):
+
+    image = image.resize((100, 100))
+
+    pixels = list(image.getdata())
+
+    color_counts = Counter(pixels)
+
+    most_common_colors = color_counts.most_common(1)
+
+    background_color = most_common_colors[0][0]
+    text_color = tuple(map(int, get_colors(image, background_color, 3)))
+
+    return background_color, text_color
+
+def RGB2HEX(color):
+    return "#{:02x}{:02x}{:02x}".format(int(color[0]), int(color[1]), int(color[2]))
+
+def get_colors(image, background_color, number_of_colors):
+
+    modified_image = cv2.resize(np.array(image), (600, 400), interpolation = cv2.INTER_AREA)
+
+    modified_image = modified_image.reshape(modified_image.shape[0]*modified_image.shape[1], 3)
+
+    clf = KMeans(n_clusters = number_of_colors)
+    labels = clf.fit_predict(modified_image)
+
+    counts = Counter(labels)
+
+    center_colors = clf.cluster_centers_
+    ordered_colors = [center_colors[i]/255 for i in counts.keys()]
+    rgb_colors = [ordered_colors[i]*255 for i in counts.keys()]
+
+
+    rgb_colors = np.array(rgb_colors)
+
+    first_color = np.array(background_color)
+
+
+    distances = np.linalg.norm(rgb_colors[:] - first_color, axis=1)
+
+    max_distance_index = np.argmax(distances)
+
+    most_distant_color = rgb_colors[max_distance_index]
+
+    return most_distant_color
+
+def create_text_image(size, background_color, text_color, text):
+    width, height = size
+    new_image = Image.new("RGB", size, background_color)
+    draw = ImageDraw.Draw(new_image)
+
+    max_text_width = width * 0.99
+    max_text_height = height * 0.99
+
+    font_size = 100
+    while font_size > 1:
+        font = ImageFont.truetype("arial.ttf", font_size, layout_engine=ImageFont.Layout.BASIC)
+        
+        text_width, text_height = draw.textbbox((0, 0), text, font=font)[2:4]
+        
+        if text_width <= max_text_width and text_height <= max_text_height:
+            break
+        else:
+            font_size -= 1
+
+    font = ImageFont.truetype("arial.ttf", font_size, layout_engine=ImageFont.Layout.BASIC)
+    
+    text_width, text_height = draw.textbbox((0, 0), text, font=font)[2:4]
+
+    y_offset = (height - text_height) // 2
+
+    x_offset = (width - text_width) // 2
+
+    draw.text((x_offset, y_offset), text, fill=text_color, font=font)
+
+    return new_image
+
+
+def enhance_image_quality(image_path):
+    pil_image = Image.open(image_path).convert('RGB')
+
+    width, height = pil_image.size
+    pil_image = pil_image.resize((int(width * 2), int(height * 2)), Image.LANCZOS)
+
+    pil_image = pil_image.filter(ImageFilter.SHARPEN)
+
+    return pil_image
+
+
+async def detect_and_translate_text(image_path):
+    reader = easyocr.Reader([src_lang])
+
+    pil_image = enhance_image_quality(image_path)
+
+    image_array = np.array(pil_image)
+
+    results = reader.readtext(image_array)
+
+    translator = Translator()
+
+    processed_images = []
+
+    for (bbox, text, prob) in results:
+        if text.strip() and prob > threshold:
+
+            print(f"Detected text: {text}, Confidence: {prob}")
+
+            translated_text = await translator.translate(text, src=src_lang, dest=dst_lang)
+            translated_text = translated_text.text
+
+            print(f"Translated text: {translated_text}")
+
+            box = bbox[0] + bbox[2]
+            box = [int(coord) for coord in box]
+
+            i_s = pil_image.crop(box)
+
+            background_color, text_color = get_background_and_text_colors(i_s)
+            o_f = create_text_image(i_s.size, background_color, text_color, translated_text)
+
+            processed_images.append((o_f, box))
+
+    for processed_image, box in processed_images:
+        pil_image.paste(processed_image, box)
+
+    output_folder = "output"
+    os.makedirs(output_folder, exist_ok=True)
+
+    output_path = os.path.join(output_folder, f"translated_{os.path.basename(image_path)}")
+    pil_image.save(output_path)
+
+    return pil_image, output_path
+
+
+# Streamlit app
+def main():
+    st.title("Text Detection and Translation")
+    st.write("Upload an image with Japanese text, and we will translate it to English.")
+
+    uploaded_file = st.file_uploader("Choose an image", type=["png", "jpg", "jpeg"])
+
+    if uploaded_file is not None:
+        input_folder = "input"
+        os.makedirs(input_folder, exist_ok=True)
+        input_path = os.path.join(input_folder, uploaded_file.name)
+
+        with open(input_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+
+        # st.image(uploaded_file, caption="Uploaded Image", use_column_width=True)
+        st.image(uploaded_file, caption="Uploaded Image", use_container_width=True)
+
+
+        if st.button("Translate Text"):
+            with st.spinner("Processing..."):
+                translated_image, output_path = asyncio.run(detect_and_translate_text(input_path))
+
+                # st.image(translated_image, caption="Translated Image", use_column_width=True)
+                st.image(translated_image, caption="Translated Image", use_container_width=True)
+                st.write(f"Translation saved to: {output_path}")
+
+                with open(output_path, "rb") as file:
+                    btn = st.download_button(
+                        label="Download Translated Image",
+                        data=file,
+                        file_name=f"translated_{uploaded_file.name}",
+                        mime="image/jpeg"
+                    )
+
+if __name__ == "__main__":
+    main()

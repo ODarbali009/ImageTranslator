@@ -1,0 +1,9 @@
+streamlit
+numpy
+opencv-python-headless
+scikit-learn
+pillow
+scikit-image
+googletrans
+easyocr
+asyncio
