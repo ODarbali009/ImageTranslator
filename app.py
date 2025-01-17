@@ -8,6 +8,8 @@ import easyocr
 from googletrans import Translator
 import os
 import asyncio
+import traceback
+
 
 src_lang = 'ja'
 dst_lang = 'en'
@@ -99,53 +101,45 @@ def enhance_image_quality(image_path):
 
     return pil_image
 
-
 async def detect_and_translate_text(image_path):
-    reader = easyocr.Reader([src_lang])
+    try:
+        reader = easyocr.Reader([src_lang])
+        pil_image = enhance_image_quality(image_path)
+        image_array = np.array(pil_image)
+        results = reader.readtext(image_array)
+        translator = Translator()
+        processed_images = []
 
-    pil_image = enhance_image_quality(image_path)
+        for (bbox, text, prob) in results:
+            if text.strip() and prob > threshold:
+                print(f"Detected text: {text}, Confidence: {prob}")
+                translated_text = await translator.translate(text, src=src_lang, dest=dst_lang)
+                translated_text = translated_text.text
+                x_min, y_min = map(int, bbox[0])
+                x_max, y_max = map(int, bbox[2])
+                
+                x_min, x_max = sorted([x_min, x_max])
+                y_min, y_max = sorted([y_min, y_max])
 
-    image_array = np.array(pil_image)
+                i_s = pil_image.crop((x_min, y_min, x_max, y_max))
+                background_color, text_color = get_background_and_text_colors(i_s)
+                o_f = create_text_image(i_s.size, background_color, text_color, translated_text)
+                processed_images.append((o_f, (x_min, y_min, x_max, y_max)))
 
-    results = reader.readtext(image_array)
+        for processed_image, box in processed_images:
+            pil_image.paste(processed_image, box)
 
-    translator = Translator()
+        output_folder = "output"
+        os.makedirs(output_folder, exist_ok=True)
+        output_path = os.path.join(output_folder, f"translated_{os.path.basename(image_path)}")
+        pil_image.save(output_path)
+        return pil_image, output_path
 
-    processed_images = []
+    except Exception as e:
+        error_msg = traceback.format_exc()
+        print(f"Error: {error_msg}")
+        raise RuntimeError(f"An error occurred during text detection: {error_msg}")
 
-    for (bbox, text, prob) in results:
-        if text.strip() and prob > threshold:
-            print(f"Detected text: {text}, Confidence: {prob}")
-
-            translated_text = await translator.translate(text, src=src_lang, dest=dst_lang)
-            translated_text = translated_text.text
-
-            x_min, y_min = map(int, bbox[0])  
-            x_max, y_max = map(int, bbox[2])  
-
-            if x_min > x_max:
-                x_min, x_max = x_max, x_min
-            if y_min > y_max:
-                y_min, y_max = y_max, y_min
-            
-            i_s = pil_image.crop((x_min, y_min, x_max, y_max))
-
-            background_color, text_color = get_background_and_text_colors(i_s)
-
-            o_f = create_text_image(i_s.size, background_color, text_color, translated_text)
-
-            processed_images.append((o_f, (x_min, y_min, x_max, y_max)))
-
-    for processed_image, box in processed_images:
-        pil_image.paste(processed_image, box)
-
-    output_folder = "output"
-    os.makedirs(output_folder, exist_ok=True)
-
-    output_path = os.path.join(output_folder, f"translated_{os.path.basename(image_path)}")
-    pil_image.save(output_path)
-
-    return pil_image, output_path
 
 
 # Streamlit app
