@@ -6,5 +6,4 @@ pillow
 scikit-image
 googletrans
 easyocr
-torch
 asyncio
