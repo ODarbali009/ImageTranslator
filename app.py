@@ -113,8 +113,7 @@ async def detect_and_translate_text(image_path):
         for (bbox, text, prob) in results:
             if text.strip() and prob > threshold:
                 print(f"Detected text: {text}, Confidence: {prob}")
-                translated_text = await translator.translate(text, src=src_lang, dest=dst_lang)
-                translated_text = translated_text.text
+                
                 x_min, y_min = map(int, bbox[0])
                 x_max, y_max = map(int, bbox[2])
                 
@@ -122,6 +121,9 @@ async def detect_and_translate_text(image_path):
                 if x_max - x_min < MIN_CROP_SIZE or y_max - y_min < MIN_CROP_SIZE:
                     print(f"Skipping bounding box smaller than {MIN_CROP_SIZE}px.")
                     continue
+
+                translated_text = await translator.translate(text, src=src_lang, dest=dst_lang)
+                translated_text = translated_text.text
 
                 i_s = pil_image.crop((x_min, y_min, x_max, y_max))
                 background_color, text_color = get_background_and_text_colors(i_s)
